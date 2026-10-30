@@ -301,7 +301,7 @@
     $('visits').innerHTML = '<p class="empty">予定を読み込んでいます…</p>';
     try {
       const r = await api('schedule');
-      $('sent-at').textContent = r.sentAt ? r.sentAt.slice(0, 16) + ' 時点の予定です。訪問を押すと変更を申請できます。' : '予定はまだ届いていません。';
+      $('sent-at').textContent = r.sentAt ? r.sentAt.slice(0, 16) + ' 時点の予定です。予定を押すと変更を申請できます。' : '予定はまだ届いていません。';
       if (!r.items.length) {
         $('visits').innerHTML = '<p class="empty">見られる予定はまだありません。事務所が予定を確定すると、ここに出ます。</p>';
         return;
@@ -312,6 +312,9 @@
         const orgTag = multi() ? '（' + esc(it.org) + '）' : '';
         if (it.type === 'off') {
           html += '<div class="visit off"><span class="t">休み</span><span class="p">' + esc(it.content) + orgTag + '</span></div>';
+        } else if (it.type === 'shift') {
+          html += '<button class="visit" data-i="' + i + '"><span class="t">' + esc(it.start) + '〜' + esc(it.end) + '</span>' +
+                  '<span class="p">' + esc(it.content) + orgTag + '</span></button>';
         } else if (it.type === 'work') {
           html += '<div class="visit work"><span class="t">' + esc(it.start) + '〜' + esc(it.end) + '</span><span class="p">' + esc(it.content) + orgTag + '</span></div>';
         } else {
@@ -327,14 +330,25 @@
     }
   }
 
+  // 訪問と施設の勤務で、選べる種類を変える（2026-10-30）
+  const KINDS = { visit: [['時間の変更', '時間の変更'], ['キャンセル', 'キャンセル'], ['担当の交代', '担当の交代']],
+                  shift: [['時間の変更', '時間の変更'], ['休みにしたい', '休みにしたい'], ['交代のお願い', '交代のお願い']] };
+  function setKinds(type) {
+    const list = KINDS[type] || KINDS.visit;
+    [['sk1', 0], ['sk2', 1], ['sk3', 2]].forEach(([id, i]) => {
+      const r = $(id); r.value = list[i][0];
+      document.querySelector('label[for="' + id + '"]').textContent = list[i][1];
+    });
+  }
   function setKind(v) {
     document.querySelectorAll('input[name="sh-kind"]').forEach(r => { r.checked = (r.value === v); });
     syncKind();
   }
   function syncKind() {
     const k = current ? document.querySelector('input[name="sh-kind"]:checked').value : '訪問の追加';
-    $('sh-times').classList.toggle('hidden', k === 'キャンセル' || k === '担当の交代');
-    $('sh-memo-hint').textContent = k === '担当の交代' ? '代わりに入る人など' : (k === 'キャンセル' ? '理由など' : '');
+    $('sh-times').classList.toggle('hidden', !(k === '時間の変更' || k === '訪問の追加'));
+    $('sh-memo-hint').textContent = k === '担当の交代' ? '代わりに入る人など' : k === '交代のお願い' ? '代わってほしい人など'
+      : (k === 'キャンセル' || k === '休みにしたい') ? '理由など' : '';
   }
   document.querySelectorAll('input[name="sh-kind"]').forEach(r => r.addEventListener('change', syncKind));
 
@@ -342,8 +356,10 @@
     current = item || null;
     $('sh-memo').value = '';
     if (current) {
-      $('sh-title').textContent = '訪問の変更';
-      $('sh-orig').textContent = dayLabel(current.date) + '　' + current.start + '〜' + current.end + '　' + current.patient + ' 様';
+      const isShift = current.type === 'shift';
+      setKinds(isShift ? 'shift' : 'visit');
+      $('sh-title').textContent = isShift ? '勤務の変更' : '訪問の変更';
+      $('sh-orig').textContent = dayLabel(current.date) + '　' + current.start + '〜' + current.end + '　' + (isShift ? current.content : current.patient + ' 様');
       $('sh-new').classList.add('hidden');
       $('sh-kinds').classList.remove('hidden');
       $('sh-start').value = current.start; $('sh-end').value = current.end;
@@ -400,7 +416,7 @@
           title = '休みの希望（' + it.leaveKind + '）';
           detail = dayLabel(it.from) + (it.to && it.to !== it.from ? ' 〜 ' + dayLabel(it.to) : '');
         } else {
-          title = it.kind + '　' + it.patient + ' 様';
+          title = it.kind + (it.patient ? '　' + it.patient + ' 様' : '');
           detail = dayLabel(it.date) + '　' + (it.oldTime ? it.oldTime : '') + (it.newTime ? (it.oldTime ? ' → ' : '') + it.newTime : '');
         }
         if (multi()) title += '（' + it.org + '）';
