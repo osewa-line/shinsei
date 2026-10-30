@@ -49,6 +49,8 @@
     display: grid; grid-template-columns: 6.2rem 1fr; gap: .5rem; align-items: center; cursor: pointer;
   }
   .visit .t { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .visit.off, .visit.work { cursor: default; background: transparent; border-style: dashed; color: var(--sub); }
+  .visit.off .t, .visit.work .t { font-weight: 500; }
   .visit .p { overflow-wrap: anywhere; }
   .visit .c { display: block; color: var(--sub); font-size: .85rem; }
   .empty { color: var(--sub); text-align: center; padding: 1.4rem .5rem; }
@@ -157,6 +159,10 @@
       <div><label for="lv-to">おわりの日</label><input type="date" id="lv-to"></div>
     </div>
     <p class="note">1日だけのときは、おわりの日は空けたままで大丈夫です。</p>
+    <div class="field hidden" id="lv-target-field">
+      <label for="lv-target">どの法人の休みか</label>
+      <select id="lv-target"></select>
+    </div>
     <div class="field">
       <span class="lbl">休みの種類</span>
       <div class="choices three">
@@ -182,6 +188,7 @@
     <div id="sh-new" class="hidden">
       <div class="field"><label for="sh-date">訪問の日付</label><input type="date" id="sh-date"></div>
       <div class="field"><label for="sh-patient">利用者</label><input id="sh-patient" placeholder="利用者の名前"></div>
+      <div class="field hidden" id="sh-org-field"><label for="sh-org">どの法人の訪問か</label><select id="sh-org"></select></div>
     </div>
 
     <div class="field" id="sh-kinds">
@@ -217,6 +224,9 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   let current = null;   // 変更しようとしている訪問
+  let myNums = [];      // 本人の番号（法人＋員番）。法人をまたぐ人は複数
+  const multi = () => myNums.length > 1;
+  const numLabel = (n) => n.org + ' ' + n.no;
 
   function showMsg(text, isErr) {
     const m = $('msg');
@@ -264,8 +274,13 @@
   }
   document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => showView(b.dataset.view)));
 
-  function enterApp(name) {
-    $('who').textContent = name + ' さん';
+  function enterApp(name, nums) {
+    myNums = nums || [];
+    $('who').textContent = name + ' さん' + (multi() ? '（' + myNums.map(numLabel).join('、') + '）' : '');
+    const opts = myNums.map((n, i) => '<option value="' + i + '">' + esc(numLabel(n)) + '</option>').join('');
+    $('sh-org').innerHTML = opts;
+    $('lv-target').innerHTML = '<option value="all">すべての法人</option>' + opts;
+    $('lv-target-field').classList.toggle('hidden', !multi());
     $('v-register').classList.add('hidden');
     $('tabs').classList.remove('hidden');
     const v = new URLSearchParams(location.search).get('view');
@@ -276,7 +291,7 @@
   $('btn-register').addEventListener('click', (ev) => busy(ev.target, '登録しています…', async () => {
     try {
       const r = await api('register', { code: $('code').value });
-      enterApp(r.name);
+      enterApp(r.name, r.nums);
       showMsg('登録しました。次からはすぐに申請できます。', false);
     } catch (e) { showMsg(e.message, true); }
   }));
@@ -286,19 +301,26 @@
     $('visits').innerHTML = '<p class="empty">予定を読み込んでいます…</p>';
     try {
       const r = await api('schedule');
-      $('sent-at').textContent = r.sentAt ? r.sentAt.slice(0, 16) + ' 時点の予定です。訪問を押すと変更を申請できます。' : '';
+      $('sent-at').textContent = r.sentAt ? r.sentAt.slice(0, 16) + ' 時点の予定です。訪問を押すと変更を申請できます。' : '予定はまだ届いていません。';
       if (!r.items.length) {
-        $('visits').innerHTML = '<p class="empty">これから2週間の予定はありません。</p>';
+        $('visits').innerHTML = '<p class="empty">見られる予定はまだありません。事務所が予定を確定すると、ここに出ます。</p>';
         return;
       }
       let html = '', last = '';
       r.items.forEach((it, i) => {
         if (it.date !== last) { html += '<h2>' + esc(dayLabel(it.date)) + '</h2>'; last = it.date; }
-        html += '<button class="visit" data-i="' + i + '"><span class="t">' + esc(it.start) + '〜' + esc(it.end) + '</span>' +
-                '<span class="p">' + esc(it.patient) + ' 様<span class="c">' + esc(it.content) + '</span></span></button>';
+        const orgTag = multi() ? '（' + esc(it.org) + '）' : '';
+        if (it.type === 'off') {
+          html += '<div class="visit off"><span class="t">休み</span><span class="p">' + esc(it.content) + orgTag + '</span></div>';
+        } else if (it.type === 'work') {
+          html += '<div class="visit work"><span class="t">' + esc(it.start) + '〜' + esc(it.end) + '</span><span class="p">' + esc(it.content) + orgTag + '</span></div>';
+        } else {
+          html += '<button class="visit" data-i="' + i + '"><span class="t">' + esc(it.start) + '〜' + esc(it.end) + '</span>' +
+                  '<span class="p">' + esc(it.patient) + ' 様<span class="c">' + esc(it.content) + orgTag + '</span></span></button>';
+        }
       });
       $('visits').innerHTML = html;
-      $('visits').querySelectorAll('.visit').forEach(b => b.addEventListener('click', () => openSheet(r.items[+b.dataset.i])));
+      $('visits').querySelectorAll('button.visit').forEach(b => b.addEventListener('click', () => openSheet(r.items[+b.dataset.i])));
     } catch (e) {
       $('visits').innerHTML = '';
       showMsg('予定を読み込めませんでした：' + e.message, true);
@@ -332,6 +354,7 @@
       $('sh-new').classList.remove('hidden');
       $('sh-kinds').classList.add('hidden');
       $('sh-date').value = todayStr(); $('sh-patient').value = '';
+      $('sh-org-field').classList.toggle('hidden', !multi());
       $('sh-start').value = ''; $('sh-end').value = '';
       syncKind();
     }
@@ -354,7 +377,8 @@
       ? { scheduleId: current.id, date: current.date, patient: current.patient, kind,
           oldTime: current.start + '〜' + current.end, newTime: needTime ? st + '〜' + en : '', memo: $('sh-memo').value.trim() }
       : { scheduleId: '', date: $('sh-date').value, patient: $('sh-patient').value.trim(), kind,
-          oldTime: '', newTime: st + '〜' + en, memo: $('sh-memo').value.trim() };
+          oldTime: '', newTime: st + '〜' + en, memo: $('sh-memo').value.trim(),
+          org: (myNums[+$('sh-org').value] || myNums[0]).org, no: (myNums[+$('sh-org').value] || myNums[0]).no };
     try {
       await api('change', data);
       closeSheet();
@@ -379,6 +403,7 @@
           title = it.kind + '　' + it.patient + ' 様';
           detail = dayLabel(it.date) + '　' + (it.oldTime ? it.oldTime : '') + (it.newTime ? (it.oldTime ? ' → ' : '') + it.newTime : '');
         }
+        if (multi()) title += '（' + it.org + '）';
         return '<div class="req"><div class="head"><span class="title">' + esc(title) + '</span>' +
                '<span class="badge ' + cls + '">' + label + '</span></div>' +
                '<div class="detail">' + esc(detail) + '</div>' +
@@ -398,7 +423,10 @@
     if (!from) { showMsg('はじめの日を選んでください。', true); return; }
     if (to < from) { showMsg('おわりの日は、はじめの日より後にしてください。', true); return; }
     try {
-      await api('leave', { from, to, kind: document.querySelector('input[name="lv-kind"]:checked').value, memo: $('lv-memo').value.trim() });
+      const t = $('lv-target').value;
+      const n = (t === 'all' || !multi()) ? myNums[0] : myNums[+t];
+      await api('leave', { from, to, kind: document.querySelector('input[name="lv-kind"]:checked').value, memo: $('lv-memo').value.trim(),
+                           target: (multi() && t === 'all') ? 'all' : 'one', org: n.org, no: n.no });
       $('lv-from').value = ''; $('lv-to').value = ''; $('lv-memo').value = '';
       showMsg('休みの希望を送りました。「申請の状況」で確認の結果を見られます。', false);
     } catch (e) { showMsg('送れませんでした：' + e.message, true); }
@@ -411,7 +439,7 @@
       if (!liff.isLoggedIn()) { liff.login(); return; }
       const me = await api('hello');
       if (me.registered) {
-        enterApp(me.name);
+        enterApp(me.name, me.nums);
       } else {
         $('who').textContent = '登録がまだです';
         $('v-register').classList.remove('hidden');
