@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>予定の変更申請</title>
+<style>
+  :root {
+    --bg: #f3f6f5;
+    --card: #ffffff;
+    --ink: #1f2b28;
+    --sub: #5d6d69;
+    --line: #d5dfdc;
+    --main: #1d7a68;
+    --main-ink: #ffffff;
+    --warn: #b3412e;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141a19;
+      --card: #1d2523;
+      --ink: #e6eeec;
+      --sub: #9fb0ab;
+      --line: #33403d;
+      --main: #3fae96;
+      --main-ink: #0d1514;
+      --warn: #ef8a76;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", Meiryo, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    padding: env(safe-area-inset-top, 0) 0 env(safe-area-inset-bottom, 0);
+  }
+  main { max-width: 34rem; margin: 0 auto; padding: 1.25rem 1rem 3rem; }
+  h1 { font-size: 1.35rem; margin: 0 0 .25rem; letter-spacing: .02em; }
+  .who { color: var(--sub); margin: 0 0 1.25rem; font-size: .95rem; }
+  .test { display: inline-block; font-size: .8rem; color: var(--warn); border: 1px solid var(--warn); border-radius: 4px; padding: 0 .4rem; margin-left: .4rem; vertical-align: middle; }
+  form { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1.1rem 1rem 1.25rem; }
+  label { display: block; font-weight: 600; margin: 0 0 .35rem; }
+  .field { margin-bottom: 1.1rem; }
+  .hint { color: var(--sub); font-size: .85rem; font-weight: 400; margin-left: .3rem; }
+  input, select, textarea {
+    width: 100%; font: inherit; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 8px; padding: .65rem .7rem; min-height: 2.9rem;
+  }
+  textarea { min-height: 5.5rem; resize: vertical; }
+  input:focus, select:focus, textarea:focus, button:focus-visible { outline: 3px solid var(--main); outline-offset: 1px; }
+  .kinds { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+  .kinds input { position: absolute; opacity: 0; pointer-events: none; }
+  .kinds label {
+    font-weight: 500; margin: 0; text-align: center; padding: .6rem .4rem; border: 1px solid var(--line);
+    border-radius: 8px; background: var(--bg); cursor: pointer;
+  }
+  .kinds input:checked + label { background: var(--main); color: var(--main-ink); border-color: var(--main); }
+  .kinds input:focus-visible + label { outline: 3px solid var(--main); outline-offset: 1px; }
+  button {
+    width: 100%; font: inherit; font-weight: 700; border: 0; border-radius: 8px; padding: .85rem;
+    background: var(--main); color: var(--main-ink); cursor: pointer; min-height: 3.1rem;
+  }
+  button[disabled] { opacity: .55; cursor: default; }
+  .msg { margin: 1rem 0 0; padding: .8rem .9rem; border-radius: 8px; border: 1px solid var(--line); background: var(--card); }
+  .msg.err { border-color: var(--warn); color: var(--warn); }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>予定の変更申請<span class="test">テスト版</span></h1>
+  <p class="who" id="who">読み込み中です…</p>
+
+  <form id="form" class="hidden" novalidate>
+    <div class="field">
+      <label for="date">訪問の日付</label>
+      <input type="date" id="date" required>
+    </div>
+
+    <div class="field">
+      <label>変更の種類</label>
+      <div class="kinds">
+        <input type="radio" name="kind" id="k1" value="時間の変更" checked><label for="k1">時間の変更</label>
+        <input type="radio" name="kind" id="k2" value="キャンセル"><label for="k2">キャンセル</label>
+        <input type="radio" name="kind" id="k3" value="訪問の追加"><label for="k3">訪問の追加</label>
+        <input type="radio" name="kind" id="k4" value="担当の交代"><label for="k4">担当の交代</label>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="patient">利用者<span class="hint">テスト中は仮の名前で</span></label>
+      <input type="text" id="patient" placeholder="例：テスト利用者A" required>
+    </div>
+
+    <div class="field">
+      <label for="time">時間<span class="hint">変更後の時間など</span></label>
+      <input type="text" id="time" placeholder="例：10:00〜11:00 → 13:00〜14:00">
+    </div>
+
+    <div class="field">
+      <label for="memo">メモ</label>
+      <textarea id="memo" placeholder="理由や連絡事項があれば"></textarea>
+    </div>
+
+    <button type="submit" id="send">申請を送る</button>
+  </form>
+
+  <p class="msg hidden" id="msg" role="status"></p>
+</main>
+
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script>
+  const LIFF_ID = '2012288635-WG5FiP1G';
+  const API_URL = 'https://script.google.com/macros/s/AKfycbyZp8Iph-KuqexOhMpzcniPKnUw7POps4mttd-rgcZH13soeikch7gDz5N-za4urooW/exec';
+
+  const $ = (id) => document.getElementById(id);
+
+  function showMsg(text, isErr) {
+    const m = $('msg');
+    m.textContent = text;
+    m.className = 'msg' + (isErr ? ' err' : '');
+  }
+
+  async function api(action, data) {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action, idToken: liff.getIDToken(), data: data || {} })
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'うまく送れませんでした');
+    return json;
+  }
+
+  async function start() {
+    try {
+      await liff.init({ liffId: LIFF_ID });
+      if (!liff.isLoggedIn()) { liff.login(); return; }
+      const me = await api('hello');
+      $('who').textContent = (me.name || 'ログイン中') + ' さんとして申請します';
+      const t = new Date();
+      $('date').value = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+      $('form').classList.remove('hidden');
+    } catch (e) {
+      $('who').textContent = '';
+      showMsg('画面を開けませんでした：' + e.message + '　LINEのトーク画面から開き直してください。', true);
+    }
+  }
+
+  $('form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (!$('date').value || !$('patient').value.trim()) {
+      showMsg('日付と利用者を入れてください。', true);
+      return;
+    }
+    const btn = $('send');
+    btn.disabled = true;
+    btn.textContent = '送っています…';
+    try {
+      await api('submit', {
+        date: $('date').value,
+        kind: document.querySelector('input[name="kind"]:checked').value,
+        patient: $('patient').value.trim(),
+        time: $('time').value.trim(),
+        memo: $('memo').value.trim()
+      });
+      $('form').classList.add('hidden');
+      showMsg('申請を送りました。確認が終わるまでお待ちください。', false);
+    } catch (e) {
+      showMsg('申請を送れませんでした：' + e.message, true);
+      btn.disabled = false;
+      btn.textContent = '申請を送る';
+    }
+  });
+
+  start();
+</script>
+</body>
+</html>
