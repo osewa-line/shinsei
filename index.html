@@ -87,6 +87,8 @@
   .btn.sub { background: var(--soft); color: var(--ink); font-weight: 600; }
   .btn[disabled] { opacity: .55; cursor: default; }
   .btn + .btn { margin-top: .5rem; }
+  .confirm-q { font-size: 1.05rem; font-weight: 700; margin: 1rem 0 .8rem; padding: .8rem .9rem; border-radius: 8px; background: var(--soft); }
+  .confirm-q small { display: block; font-weight: 500; color: var(--sub); font-size: .85rem; margin-top: .2rem; }
 
   .req { border: 1px solid var(--line); border-radius: 10px; padding: .75rem .85rem; margin-bottom: .5rem; background: var(--card); }
   .req .head { display: flex; justify-content: space-between; gap: .5rem; align-items: baseline; }
@@ -131,7 +133,12 @@
       <label for="code">登録コード</label>
       <input id="code" autocomplete="off" inputmode="numeric" placeholder="例：123456">
     </div>
-    <button class="btn" id="btn-register">登録する</button>
+    <button class="btn" id="btn-register">次へ</button>
+    <div id="reg-confirm" class="hidden">
+      <p class="confirm-q" id="reg-who"></p>
+      <button class="btn" id="btn-reg-yes">はい、登録する</button>
+      <button class="btn sub" id="btn-reg-no">いいえ、やめる</button>
+    </div>
   </section>
 
   <nav id="tabs" class="hidden" role="tablist">
@@ -144,7 +151,7 @@
   <section id="v-change" class="hidden">
     <p class="note" id="sent-at"></p>
     <div id="visits"></div>
-    <button class="btn sub" id="btn-add">予定にない訪問を追加する</button>
+    <button class="btn sub hidden" id="btn-add">予定にない訪問を追加する</button>
   </section>
 
   <!-- 申請の状況 -->
@@ -179,16 +186,16 @@
   </section>
 </main>
 
-<!-- 訪問の変更（下から出る画面） -->
+<!-- 予定の変更（下から出る画面） -->
 <div class="sheet-bg hidden" id="sheet-bg">
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh-title">
-    <h3 id="sh-title">訪問の変更</h3>
+    <h3 id="sh-title">予定の変更</h3>
     <p class="orig" id="sh-orig"></p>
 
     <div id="sh-new" class="hidden">
-      <div class="field"><label for="sh-date">訪問の日付</label><input type="date" id="sh-date"></div>
+      <div class="field"><label for="sh-date">日付</label><input type="date" id="sh-date"></div>
       <div class="field"><label for="sh-patient">利用者</label><input id="sh-patient" placeholder="利用者の名前"></div>
-      <div class="field hidden" id="sh-org-field"><label for="sh-org">どの法人の訪問か</label><select id="sh-org"></select></div>
+      <div class="field hidden" id="sh-org-field"><label for="sh-org">どの法人の分か</label><select id="sh-org"></select></div>
     </div>
 
     <div class="field" id="sh-kinds">
@@ -223,7 +230,8 @@
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  let current = null;   // 変更しようとしている訪問
+  let current = null;   // 変更しようとしている訪問・勤務
+  let addMode = 'shift'; // 「予定にない〇〇を追加」：訪問の予定がある人は visit、施設の人は shift（2026-10-30）
   let myNums = [];      // 本人の番号（法人＋員番）。法人をまたぐ人は複数
   const multi = () => myNums.length > 1;
   const numLabel = (n) => n.org + ' ' + n.no;
@@ -240,6 +248,7 @@
     const t = new Date();
     return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
   }
+  function monthFirst() { const t = new Date(); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-01'; }
   function dayLabel(s) {
     if (!s) return '';
     const [y, m, d] = s.split('-').map(Number);
@@ -276,6 +285,7 @@
 
   function enterApp(name, nums) {
     myNums = nums || [];
+    $('lv-from').min = monthFirst(); $('lv-to').min = monthFirst();      // 今月より前は選べない（2026-10-30）
     $('who').textContent = name + ' さん' + (multi() ? '（' + myNums.map(numLabel).join('、') + '）' : '');
     const opts = myNums.map((n, i) => '<option value="' + i + '">' + esc(numLabel(n)) + '</option>').join('');
     $('sh-org').innerHTML = opts;
@@ -288,9 +298,26 @@
   }
 
   // ===== 本人登録 =====
-  $('btn-register').addEventListener('click', (ev) => busy(ev.target, '登録しています…', async () => {
+  // 登録コードを入れたら、まず名前を出して確かめる（2026-10-30）
+  $('btn-register').addEventListener('click', (ev) => busy(ev.target, '確かめています…', async () => {
+    hideMsg();
     try {
-      const r = await api('register', { code: $('code').value });
+      const r = await api('peek', { code: $('code').value.normalize('NFKC').replace(/\s/g, '') });
+      $('reg-who').innerHTML = esc(r.name) + ' さんで間違いないですか？<small>' + esc(r.nums.map(numLabel).join('、')) + '</small>';
+      $('reg-confirm').classList.remove('hidden');
+      $('btn-register').classList.add('hidden');
+      $('code').disabled = true;
+    } catch (e) { showMsg(e.message, true); }
+  }));
+  $('btn-reg-no').addEventListener('click', () => {
+    $('reg-confirm').classList.add('hidden');
+    $('btn-register').classList.remove('hidden');
+    $('code').disabled = false; $('code').value = ''; $('code').focus();
+    showMsg('やめました。登録コードをもう一度確かめて入れてください。', false);
+  });
+  $('btn-reg-yes').addEventListener('click', (ev) => busy(ev.target, '登録しています…', async () => {
+    try {
+      const r = await api('register', { code: $('code').value.normalize('NFKC').replace(/\s/g, '') });
       enterApp(r.name, r.nums);
       showMsg('登録しました。次からはすぐに申請できます。', false);
     } catch (e) { showMsg(e.message, true); }
@@ -302,6 +329,10 @@
     try {
       const r = await api('schedule');
       $('sent-at').textContent = r.sentAt ? r.sentAt.slice(0, 16) + ' 時点の予定です。予定を押すと変更を申請できます。' : '予定はまだ届いていません。';
+      addMode = r.items.some(it => it.type === 'visit') ? 'visit' : 'shift';
+      // 施設の勤務は管理者が入れるので、追加の申請は訪問の予定がある人だけ（2026-10-30 本人）
+      $('btn-add').textContent = '予定にない訪問を追加する';
+      $('btn-add').classList.toggle('hidden', addMode !== 'visit');
       if (!r.items.length) {
         $('visits').innerHTML = '<p class="empty">見られる予定はまだありません。事務所が予定を確定すると、ここに出ます。</p>';
         return;
@@ -345,10 +376,10 @@
     syncKind();
   }
   function syncKind() {
-    const k = current ? document.querySelector('input[name="sh-kind"]:checked').value : '訪問の追加';
-    $('sh-times').classList.toggle('hidden', !(k === '時間の変更' || k === '訪問の追加'));
+    const k = current ? document.querySelector('input[name="sh-kind"]:checked').value : (addMode === 'visit' ? '訪問の追加' : '勤務の追加');
+    $('sh-times').classList.toggle('hidden', !(k === '時間の変更' || k === '訪問の追加' || k === '勤務の追加'));
     $('sh-memo-hint').textContent = k === '担当の交代' ? '代わりに入る人など' : k === '交代のお願い' ? '代わってほしい人など'
-      : (k === 'キャンセル' || k === '休みにしたい') ? '理由など' : '';
+      : (k === 'キャンセル' || k === '休みにしたい') ? '理由など' : k === '勤務の追加' ? 'どこで、何の勤務か' : '';
   }
   document.querySelectorAll('input[name="sh-kind"]').forEach(r => r.addEventListener('change', syncKind));
 
@@ -365,9 +396,11 @@
       $('sh-start').value = current.start; $('sh-end').value = current.end;
       setKind('時間の変更');
     } else {
-      $('sh-title').textContent = '予定にない訪問を追加';
-      $('sh-orig').textContent = '予定の一覧にない訪問を申請します。';
+      const v = addMode === 'visit';
+      $('sh-title').textContent = v ? '予定にない訪問を追加' : '予定にない勤務を追加';
+      $('sh-orig').textContent = v ? '予定の一覧にない訪問を申請します。' : '予定の一覧にない勤務を申請します。';
       $('sh-new').classList.remove('hidden');
+      $('sh-patient').closest('.field').classList.toggle('hidden', !v);
       $('sh-kinds').classList.add('hidden');
       $('sh-date').value = todayStr(); $('sh-patient').value = '';
       $('sh-org-field').classList.toggle('hidden', !multi());
@@ -382,17 +415,17 @@
   $('sheet-bg').addEventListener('click', (e) => { if (e.target.id === 'sheet-bg') closeSheet(); });
 
   $('sh-send').addEventListener('click', (ev) => busy(ev.target, '送っています…', async () => {
-    const kind = current ? document.querySelector('input[name="sh-kind"]:checked').value : '訪問の追加';
-    const needTime = (kind === '時間の変更' || kind === '訪問の追加');
+    const kind = current ? document.querySelector('input[name="sh-kind"]:checked').value : (addMode === 'visit' ? '訪問の追加' : '勤務の追加');
+    const needTime = (kind === '時間の変更' || kind === '訪問の追加' || kind === '勤務の追加');
     const st = $('sh-start').value, en = $('sh-end').value;
     if (needTime && (!st || !en)) { alert('開始と終了の時間を入れてください。'); return; }
     if (needTime && st >= en) { alert('終了の時間は開始より後にしてください。'); return; }
-    if (!current && !$('sh-patient').value.trim()) { alert('利用者の名前を入れてください。'); return; }
+    if (kind === '訪問の追加' && !$('sh-patient').value.trim()) { alert('利用者の名前を入れてください。'); return; }
     if (kind === '時間の変更' && st === current.start && en === current.end) { alert('時間が変わっていません。'); return; }
     const data = current
       ? { scheduleId: current.id, date: current.date, patient: current.patient, kind,
           oldTime: current.start + '〜' + current.end, newTime: needTime ? st + '〜' + en : '', memo: $('sh-memo').value.trim() }
-      : { scheduleId: '', date: $('sh-date').value, patient: $('sh-patient').value.trim(), kind,
+      : { scheduleId: '', date: $('sh-date').value, patient: kind === '訪問の追加' ? $('sh-patient').value.trim() : '', kind,
           oldTime: '', newTime: st + '〜' + en, memo: $('sh-memo').value.trim(),
           org: (myNums[+$('sh-org').value] || myNums[0]).org, no: (myNums[+$('sh-org').value] || myNums[0]).no };
     try {
@@ -437,6 +470,7 @@
   $('btn-leave').addEventListener('click', (ev) => busy(ev.target, '送っています…', async () => {
     const from = $('lv-from').value, to = $('lv-to').value || from;
     if (!from) { showMsg('はじめの日を選んでください。', true); return; }
+    if (from < monthFirst()) { showMsg('今月より前の休みは申請できません。', true); return; }
     if (to < from) { showMsg('おわりの日は、はじめの日より後にしてください。', true); return; }
     try {
       const t = $('lv-target').value;
