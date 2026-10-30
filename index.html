@@ -129,7 +129,7 @@
     <p class="note">はじめて使うときだけ、事務所から伝えられた登録コードを入れてください。</p>
     <div class="field">
       <label for="code">登録コード</label>
-      <input id="code" autocomplete="off" autocapitalize="characters" placeholder="例：TEST01">
+      <input id="code" autocomplete="off" inputmode="numeric" placeholder="例：123456">
     </div>
     <button class="btn" id="btn-register">登録する</button>
   </section>
@@ -456,6 +456,9 @@
       const me = await api('hello');
       if (me.registered) {
         enterApp(me.name, me.nums);
+      } else if (me.disabled) {
+        $('who').textContent = '';
+        showMsg('このLINEでは、いまは申請できません。事務所に連絡してください。', true);
       } else {
         $('who').textContent = '登録がまだです';
         $('v-register').classList.remove('hidden');
