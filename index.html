@@ -297,6 +297,8 @@
 
   function enterApp(name, nums) {
     myNums = nums || [];
+    // 訪問看護の番号がある人は、予定に訪問が無くても「予定にない訪問を追加」が使える（名簿で判断。2026-10-30）
+    if (myNums.some(n => n.visit)) { addMode = 'visit'; visitOrgs = [...new Set(myNums.filter(n => n.visit).map(n => n.org))]; }
     $('lv-from').min = monthFirst();      // 今月より前は選べない（2026-10-30）
     $('who').textContent = name + ' さん' + (multi() ? '（' + myNums.map(numLabel).join('、') + '）' : '');
     const opts = myNums.map((n, i) => '<option value="' + i + '">' + esc(numLabel(n)) + '</option>').join('');
@@ -340,8 +342,9 @@
     $('visits').innerHTML = '<p class="empty">予定を読み込んでいます…</p>';
     try {
       const r = await api('schedule');
-      addMode = r.items.some(it => it.type === 'visit') ? 'visit' : 'shift';
-      visitOrgs = [...new Set(r.items.filter(it => it.type === 'visit').map(it => it.org))];
+      const vn = myNums.filter(n => n.visit).map(n => n.org);
+      addMode = (vn.length || r.items.some(it => it.type === 'visit')) ? 'visit' : 'shift';
+      visitOrgs = [...new Set(vn.concat(r.items.filter(it => it.type === 'visit').map(it => it.org)))];
       // 訪問の予定がある人だけ「変更」ができる。施設の勤務だけの人は確認だけ（2026-10-30 本人）
       $('tab-change').textContent = addMode === 'visit' ? '予定の確認・変更' : '予定の確認';
       $('sent-at').textContent = r.sentAt ? r.sentAt.slice(0, 16) + ' 時点の予定です。' + (addMode === 'visit' ? '訪問を押すと変更を申請できます。' : '') : '予定はまだ届いていません。';
@@ -442,7 +445,7 @@
       $('sh-new').classList.remove('hidden');
       $('sh-patient').closest('.field').classList.toggle('hidden', !v);
       $('sh-kinds').classList.add('hidden');
-      $('sh-date').value = todayStr(); $('sh-patient').value = ''; pickedPat = null; $('pat-list').innerHTML = ''; $('pat-picked').textContent = '';
+      $('sh-date').value = todayStr(); $('sh-date').min = todayStr(); $('sh-patient').value = ''; pickedPat = null; $('pat-list').innerHTML = ''; $('pat-picked').textContent = '';
       if (v) loadPatients();
       // 訪問の追加で選べる法人は、訪問の予定が入っている法人だけ（訪問看護に社福はないので出さない）
       const okIdx = myNums.map((n, i) => i).filter(i => !visitOrgs.length || visitOrgs.includes(myNums[i].org));
@@ -465,6 +468,7 @@
     if (needTime && (!st || !en)) { alert('開始と終了の時間を入れてください。'); return; }
     if (needTime && st >= en) { alert('終了の時間は開始より後にしてください。'); return; }
     if (kind === '訪問の追加' && !$('sh-patient').value.trim()) { alert('利用者の名前を入れてください。'); return; }
+    if (!current && $('sh-date').value < todayStr()) { alert('今日より前の予定は申請できません。事務所に連絡してください。'); return; }
     if (kind === '時間の変更' && st === current.start && en === current.end) { alert('時間が変わっていません。'); return; }
     const data = current
       ? { scheduleId: current.id, date: current.date, patient: current.patient, kind,
