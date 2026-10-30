@@ -50,6 +50,7 @@
   }
   .visit .t { font-weight: 700; font-variant-numeric: tabular-nums; }
   .visit.off, .visit.work { cursor: default; background: transparent; border-style: dashed; color: var(--sub); }
+  .visit.shift { cursor: default; }
   .visit.off .t, .visit.work .t { font-weight: 500; }
   .visit .p { overflow-wrap: anywhere; }
   .visit .c { display: block; color: var(--sub); font-size: .85rem; }
@@ -142,7 +143,7 @@
   </section>
 
   <nav id="tabs" class="hidden" role="tablist">
-    <button role="tab" data-view="change" aria-selected="true">予定の変更</button>
+    <button role="tab" data-view="change" aria-selected="true" id="tab-change">予定の確認</button>
     <button role="tab" data-view="status" aria-selected="false">申請の状況</button>
     <button role="tab" data-view="leave" aria-selected="false">休みの希望</button>
   </nav>
@@ -161,26 +162,31 @@
 
   <!-- 休みの希望 -->
   <section id="v-leave" class="box hidden">
-    <div class="row2 field">
-      <div><label for="lv-from">はじめの日</label><input type="date" id="lv-from"></div>
-      <div><label for="lv-to">おわりの日</label><input type="date" id="lv-to"></div>
+    <div class="field">
+      <label for="lv-from">休みたい日</label><input type="date" id="lv-from">
     </div>
-    <p class="note">1日だけのときは、おわりの日は空けたままで大丈夫です。</p>
+    <p class="note">何日か休みたいときは、1日ずつ送ってください。</p>
     <div class="field hidden" id="lv-target-field">
       <label for="lv-target">どの法人の休みか</label>
       <select id="lv-target"></select>
     </div>
     <div class="field">
       <span class="lbl">休みの種類</span>
-      <div class="choices three">
+      <div class="choices">
         <input type="radio" name="lv-kind" id="lk1" value="希望休" checked><label for="lk1">希望休</label>
-        <input type="radio" name="lv-kind" id="lk2" value="有給"><label for="lk2">有給</label>
+        <input type="radio" name="lv-kind" id="lk2" value="有給"><label for="lk2">有給（1日）</label>
+        <input type="radio" name="lv-kind" id="lk4" value="時間有休"><label for="lk4">時間有休</label>
         <input type="radio" name="lv-kind" id="lk3" value="その他"><label for="lk3">その他</label>
       </div>
     </div>
+    <div class="row2 field hidden" id="lv-times">
+      <div><label for="lv-start">休む時間（から）</label><input type="time" id="lv-start" step="900"></div>
+      <div><label for="lv-end">（まで）</label><input type="time" id="lv-end" step="900"></div>
+    </div>
+    <p class="note hidden" id="lv-hours"></p>
     <div class="field">
       <label for="lv-memo">メモ</label>
-      <textarea id="lv-memo" placeholder="午前だけ、などあれば"></textarea>
+      <textarea id="lv-memo" placeholder="理由や連絡事項があれば"></textarea>
     </div>
     <button class="btn" id="btn-leave">休みの希望を送る</button>
   </section>
@@ -285,7 +291,7 @@
 
   function enterApp(name, nums) {
     myNums = nums || [];
-    $('lv-from').min = monthFirst(); $('lv-to').min = monthFirst();      // 今月より前は選べない（2026-10-30）
+    $('lv-from').min = monthFirst();      // 今月より前は選べない（2026-10-30）
     $('who').textContent = name + ' さん' + (multi() ? '（' + myNums.map(numLabel).join('、') + '）' : '');
     const opts = myNums.map((n, i) => '<option value="' + i + '">' + esc(numLabel(n)) + '</option>').join('');
     $('sh-org').innerHTML = opts;
@@ -328,8 +334,10 @@
     $('visits').innerHTML = '<p class="empty">予定を読み込んでいます…</p>';
     try {
       const r = await api('schedule');
-      $('sent-at').textContent = r.sentAt ? r.sentAt.slice(0, 16) + ' 時点の予定です。予定を押すと変更を申請できます。' : '予定はまだ届いていません。';
       addMode = r.items.some(it => it.type === 'visit') ? 'visit' : 'shift';
+      // 訪問の予定がある人だけ「変更」ができる。施設の勤務だけの人は確認だけ（2026-10-30 本人）
+      $('tab-change').textContent = addMode === 'visit' ? '予定の確認・変更' : '予定の確認';
+      $('sent-at').textContent = r.sentAt ? r.sentAt.slice(0, 16) + ' 時点の予定です。' + (addMode === 'visit' ? '訪問を押すと変更を申請できます。' : '') : '予定はまだ届いていません。';
       // 施設の勤務は管理者が入れるので、追加の申請は訪問の予定がある人だけ（2026-10-30 本人）
       $('btn-add').textContent = '予定にない訪問を追加する';
       $('btn-add').classList.toggle('hidden', addMode !== 'visit');
@@ -344,8 +352,9 @@
         if (it.type === 'off') {
           html += '<div class="visit off"><span class="t">休み</span><span class="p">' + esc(it.content) + orgTag + '</span></div>';
         } else if (it.type === 'shift') {
-          html += '<button class="visit" data-i="' + i + '"><span class="t">' + esc(it.start) + '〜' + esc(it.end) + '</span>' +
-                  '<span class="p">' + esc(it.content) + orgTag + '</span></button>';
+          // 施設の勤務は管理者が決めるので、LINEからは見るだけ（2026-10-30 本人）
+          html += '<div class="visit shift"><span class="t">' + esc(it.start) + '〜' + esc(it.end) + '</span>' +
+                  '<span class="p">' + esc(it.content) + orgTag + '</span></div>';
         } else if (it.type === 'work') {
           html += '<div class="visit work"><span class="t">' + esc(it.start) + '〜' + esc(it.end) + '</span><span class="p">' + esc(it.content) + orgTag + '</span></div>';
         } else {
@@ -446,7 +455,7 @@
         const label = it.status === '適用済み' ? '反映しました' : it.status === '却下' ? '反映できません' : it.status === '取消' ? '取り消しました' : '確認待ち';
         let title, detail;
         if (it.type === '休みの希望') {
-          title = '休みの希望（' + it.leaveKind + '）';
+          title = '休みの希望（' + it.leaveKind + (it.newTime ? ' ' + it.newTime : '') + '）';
           detail = dayLabel(it.from) + (it.to && it.to !== it.from ? ' 〜 ' + dayLabel(it.to) : '');
         } else {
           title = it.kind + (it.patient ? '　' + it.patient + ' 様' : '');
@@ -467,17 +476,37 @@
   }
 
   // ===== 休みの希望 =====
+  // 時間有休：休む時間（から・まで）を入れる（2026-10-30）
+  const lvKind = () => document.querySelector('input[name="lv-kind"]:checked').value;
+  function lvSync() {
+    const hr = lvKind() === '時間有休';
+    $('lv-times').classList.toggle('hidden', !hr);
+    const st = $('lv-start').value, en = $('lv-end').value;
+    const m = (st && en) ? (en.split(':')[0] * 60 + +en.split(':')[1]) - (st.split(':')[0] * 60 + +st.split(':')[1]) : 0;
+    $('lv-hours').classList.toggle('hidden', !(hr && m > 0));
+    $('lv-hours').textContent = m > 0 ? '時間有休 ' + (m / 60) + ' 時間' : '';
+    return m;
+  }
+  document.querySelectorAll('input[name="lv-kind"]').forEach(r => r.addEventListener('change', lvSync));
+  ['lv-start', 'lv-end'].forEach(id => $(id).addEventListener('change', lvSync));
   $('btn-leave').addEventListener('click', (ev) => busy(ev.target, '送っています…', async () => {
-    const from = $('lv-from').value, to = $('lv-to').value || from;
-    if (!from) { showMsg('はじめの日を選んでください。', true); return; }
+    const from = $('lv-from').value, kind = lvKind();
+    if (!from) { showMsg('休みたい日を選んでください。', true); return; }
     if (from < monthFirst()) { showMsg('今月より前の休みは申請できません。', true); return; }
-    if (to < from) { showMsg('おわりの日は、はじめの日より後にしてください。', true); return; }
+    let time = '';
+    if (kind === '時間有休') {
+      const m = lvSync();
+      if (!$('lv-start').value || !$('lv-end').value) { showMsg('休む時間（から・まで）を入れてください。', true); return; }
+      if (m <= 0) { showMsg('休む時間の「まで」は「から」より後にしてください。', true); return; }
+      if (m >= 480) { showMsg('8時間以上のときは「有給（1日）」を選んでください。', true); return; }
+      time = $('lv-start').value + '〜' + $('lv-end').value;
+    }
     try {
       const t = $('lv-target').value;
       const n = (t === 'all' || !multi()) ? myNums[0] : myNums[+t];
-      await api('leave', { from, to, kind: document.querySelector('input[name="lv-kind"]:checked').value, memo: $('lv-memo').value.trim(),
+      await api('leave', { from, to: from, kind, time, memo: $('lv-memo').value.trim(),
                            target: (multi() && t === 'all') ? 'all' : 'one', org: n.org, no: n.no });
-      $('lv-from').value = ''; $('lv-to').value = ''; $('lv-memo').value = '';
+      $('lv-from').value = ''; $('lv-memo').value = ''; $('lv-start').value = ''; $('lv-end').value = ''; lvSync();
       showMsg('休みの希望を送りました。「申請の状況」で確認の結果を見られます。', false);
     } catch (e) { showMsg('送れませんでした：' + e.message, true); }
   }));
