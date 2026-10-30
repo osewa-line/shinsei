@@ -442,8 +442,8 @@
       const r = await api('status');
       if (!r.items.length) { $('reqs').innerHTML = '<p class="empty">まだ申請はありません。</p>'; return; }
       $('reqs').innerHTML = r.items.map(it => {
-        const cls = it.status === '適用済み' ? 'ok' : (it.status === '却下' ? 'ng' : 'wait');
-        const label = it.status === '適用済み' ? '反映しました' : (it.status === '却下' ? '反映できません' : '確認待ち');
+        const cls = it.status === '適用済み' ? 'ok' : (it.status === '却下' || it.status === '取消') ? 'ng' : 'wait';
+        const label = it.status === '適用済み' ? '反映しました' : it.status === '却下' ? '反映できません' : it.status === '取消' ? '取り消しました' : '確認待ち';
         let title, detail;
         if (it.type === '休みの希望') {
           title = '休みの希望（' + it.leaveKind + '）';
