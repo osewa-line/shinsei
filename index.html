@@ -101,6 +101,9 @@
   .badge.ng { color: var(--warn); }
   .req .reply { margin-top: .4rem; font-size: .9rem; border-left: 3px solid var(--line); padding-left: .55rem; }
 
+  .pat-list { display: grid; gap: .35rem; margin-top: .4rem; }
+  .pat-list button { text-align: left; font: inherit; padding: .55rem .7rem; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); cursor: pointer; }
+  .pat-list button small { color: var(--sub); margin-left: .4rem; }
   .msg { margin: 0 0 1rem; padding: .75rem .9rem; border-radius: 8px; border: 1px solid var(--line); background: var(--card); }
   .msg.err { border-color: var(--warn); color: var(--warn); }
   .hidden { display: none !important; }
@@ -200,7 +203,8 @@
 
     <div id="sh-new" class="hidden">
       <div class="field"><label for="sh-date">日付</label><input type="date" id="sh-date"></div>
-      <div class="field"><label for="sh-patient">利用者</label><input id="sh-patient" placeholder="利用者の名前"></div>
+      <div class="field"><label for="sh-patient">利用者</label><input id="sh-patient" placeholder="名前・よみで探す" autocomplete="off">
+        <div id="pat-list" class="pat-list"></div><p class="note" id="pat-picked" style="margin:.4rem 0 0"></p></div>
       <div class="field hidden" id="sh-org-field"><label for="sh-org">どの法人の分か</label><select id="sh-org"></select></div>
     </div>
 
@@ -238,7 +242,8 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   let current = null;   // 変更しようとしている訪問・勤務
   let addMode = 'shift'; // 「予定にない〇〇を追加」：訪問の予定がある人は visit、施設の人は shift（2026-10-30）
-  let visitOrgs = [];    // 訪問の予定が入っている法人（訪問の追加で選べるのはこの法人だけ。2026-10-30 本人）
+  let visitOrgs = [];
+  let patients = null, pickedPat = null;   // 利用者の候補（訪看スケジュールの「利用者」から。2026-10-30）    // 訪問の予定が入っている法人（訪問の追加で選べるのはこの法人だけ。2026-10-30 本人）
   let myNums = [];      // 本人の番号（法人＋員番）。法人をまたぐ人は複数
   const multi = () => myNums.length > 1;
   const numLabel = (n) => n.org + ' ' + n.no;
@@ -394,6 +399,30 @@
   }
   document.querySelectorAll('input[name="sh-kind"]').forEach(r => r.addEventListener('change', syncKind));
 
+  // 利用者を探す：名前・よみ（ひらがな・カタカナ・半角どれでも）
+  const hira = (x) => String(x || '').normalize('NFKC').replace(/[\u30a1-\u30f6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60)).replace(/[\s　]/g, '');
+  async function loadPatients() {
+    if (patients) return;
+    try { const r = await api('patients'); patients = (r.items || []).sort((a, b) => (a.kana || a.disp).localeCompare(b.kana || b.disp, 'ja')); }
+    catch (e) { patients = []; }
+  }
+  function patSearch() {
+    const q = hira($('sh-patient').value);
+    pickedPat = null; $('pat-picked').textContent = '';
+    if (!q || !patients || !patients.length) { $('pat-list').innerHTML = ''; return; }
+    const hit = patients.filter(p => [p.disp, p.name, p.kana].some(x => hira(x).includes(q))).slice(0, 8);
+    $('pat-list').innerHTML = hit.length
+      ? hit.map((p, i) => '<button type="button" data-pi="' + patients.indexOf(p) + '">' + esc(p.disp) + ' 様' + (p.kana ? '<small>' + esc(p.kana) + '</small>' : '') + '</button>').join('')
+      : '<p class="note" style="margin:0">一覧に見つかりません。このまま送ると、書いた名前で申請します。</p>';
+  }
+  $('sh-patient').addEventListener('input', patSearch);
+  $('pat-list').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-pi]'); if (!b) return;
+    pickedPat = patients[+b.dataset.pi];
+    $('sh-patient').value = pickedPat.disp; $('pat-list').innerHTML = '';
+    $('pat-picked').textContent = pickedPat.disp + ' 様を選びました。';
+  });
+
   function openSheet(item) {
     current = item || null;
     $('sh-memo').value = '';
@@ -413,7 +442,8 @@
       $('sh-new').classList.remove('hidden');
       $('sh-patient').closest('.field').classList.toggle('hidden', !v);
       $('sh-kinds').classList.add('hidden');
-      $('sh-date').value = todayStr(); $('sh-patient').value = '';
+      $('sh-date').value = todayStr(); $('sh-patient').value = ''; pickedPat = null; $('pat-list').innerHTML = ''; $('pat-picked').textContent = '';
+      if (v) loadPatients();
       // 訪問の追加で選べる法人は、訪問の予定が入っている法人だけ（訪問看護に社福はないので出さない）
       const okIdx = myNums.map((n, i) => i).filter(i => !visitOrgs.length || visitOrgs.includes(myNums[i].org));
       $('sh-org').innerHTML = okIdx.map(i => '<option value="' + i + '">' + esc(numLabel(myNums[i])) + '</option>').join('');
@@ -439,7 +469,7 @@
     const data = current
       ? { scheduleId: current.id, date: current.date, patient: current.patient, kind,
           oldTime: current.start + '〜' + current.end, newTime: needTime ? st + '〜' + en : '', memo: $('sh-memo').value.trim() }
-      : { scheduleId: '', date: $('sh-date').value, patient: kind === '訪問の追加' ? $('sh-patient').value.trim() : '', kind,
+      : { scheduleId: '', date: $('sh-date').value, patient: kind === '訪問の追加' ? (pickedPat ? pickedPat.name : $('sh-patient').value.trim()) : '', kind,
           oldTime: '', newTime: st + '〜' + en, memo: $('sh-memo').value.trim(),
           org: (myNums[+$('sh-org').value] || myNums[0]).org, no: (myNums[+$('sh-org').value] || myNums[0]).no };
     try {
