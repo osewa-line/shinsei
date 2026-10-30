@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>お世話宅配便グループ 申請</title>
+<style>
+  :root {
+    --bg: #f3f6f5; --card: #ffffff; --ink: #1f2b28; --sub: #5d6d69; --line: #d5dfdc;
+    --main: #1d7a68; --main-ink: #ffffff; --soft: #e3efec; --warn: #b3412e; --ok: #1d7a68; --wait: #8a6d1d;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141a19; --card: #1d2523; --ink: #e6eeec; --sub: #9fb0ab; --line: #33403d;
+      --main: #3fae96; --main-ink: #0d1514; --soft: #22322e; --warn: #ef8a76; --ok: #5cc7ae; --wait: #e0c36a;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", Meiryo, sans-serif;
+    font-size: 16px; line-height: 1.6;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  main { max-width: 34rem; margin: 0 auto; padding: 1rem 1rem 3rem; }
+  header { margin-bottom: .9rem; }
+  h1 { font-size: 1.25rem; margin: 0; }
+  .who { color: var(--sub); margin: .1rem 0 0; font-size: .92rem; }
+  .test { font-size: .75rem; color: var(--warn); border: 1px solid var(--warn); border-radius: 4px; padding: 0 .35rem; margin-left: .4rem; vertical-align: middle; }
+
+  nav { display: grid; grid-template-columns: repeat(3, 1fr); gap: .35rem; margin-bottom: 1rem; }
+  nav button {
+    font: inherit; font-size: .95rem; padding: .55rem .2rem; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--card); color: var(--ink); cursor: pointer; min-height: 2.8rem;
+  }
+  nav button[aria-selected="true"] { background: var(--main); color: var(--main-ink); border-color: var(--main); font-weight: 700; }
+
+  .box { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem; }
+  .note { color: var(--sub); font-size: .88rem; margin: 0 0 .8rem; }
+  h2 { font-size: 1rem; margin: 1.1rem 0 .45rem; color: var(--sub); font-weight: 600; }
+  h2:first-child { margin-top: 0; }
+
+  .visit {
+    width: 100%; text-align: left; font: inherit; color: var(--ink); background: var(--card);
+    border: 1px solid var(--line); border-radius: 10px; padding: .7rem .85rem; margin-bottom: .45rem;
+    display: grid; grid-template-columns: 6.2rem 1fr; gap: .5rem; align-items: center; cursor: pointer;
+  }
+  .visit .t { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .visit.off, .visit.work { cursor: default; background: transparent; border-style: dashed; color: var(--sub); }
+  .visit.off .t, .visit.work .t { font-weight: 500; }
+  .visit .p { overflow-wrap: anywhere; }
+  .visit .c { display: block; color: var(--sub); font-size: .85rem; }
+  .empty { color: var(--sub); text-align: center; padding: 1.4rem .5rem; }
+
+  label, .lbl { display: block; font-weight: 600; margin: 0 0 .35rem; }
+  .field { margin-bottom: 1rem; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+  .row2 > div { min-width: 0; }
+  .hint { color: var(--sub); font-size: .85rem; font-weight: 400; margin-left: .3rem; }
+  input, select, textarea {
+    display: block; width: 100%; max-width: 100%; min-width: 0; font: inherit; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 8px; padding: .6rem .7rem; min-height: 2.9rem; margin: 0;
+  }
+  /* iPhoneで日付・時刻の欄が右にはみ出さないように */
+  input[type="date"], input[type="time"] { -webkit-appearance: none; appearance: none; }
+  input::-webkit-date-and-time-value { text-align: left; }
+  textarea { min-height: 5rem; resize: vertical; }
+  input:focus, select:focus, textarea:focus, button:focus-visible { outline: 3px solid var(--main); outline-offset: 1px; }
+
+  .choices { display: grid; grid-template-columns: 1fr 1fr; gap: .45rem; }
+  .choices.three { grid-template-columns: repeat(3, 1fr); }
+  .choices input { position: absolute; opacity: 0; pointer-events: none; width: 1px; min-height: 0; }
+  .choices label {
+    font-weight: 500; margin: 0; text-align: center; padding: .55rem .3rem; border: 1px solid var(--line);
+    border-radius: 8px; background: var(--bg); cursor: pointer;
+  }
+  .choices input:checked + label { background: var(--main); color: var(--main-ink); border-color: var(--main); }
+  .choices input:focus-visible + label { outline: 3px solid var(--main); outline-offset: 1px; }
+
+  .btn {
+    display: block; width: 100%; font: inherit; font-weight: 700; border: 0; border-radius: 8px; padding: .8rem;
+    background: var(--main); color: var(--main-ink); cursor: pointer; min-height: 3rem;
+  }
+  .btn.sub { background: var(--soft); color: var(--ink); font-weight: 600; }
+  .btn[disabled] { opacity: .55; cursor: default; }
+  .btn + .btn { margin-top: .5rem; }
+
+  .req { border: 1px solid var(--line); border-radius: 10px; padding: .75rem .85rem; margin-bottom: .5rem; background: var(--card); }
+  .req .head { display: flex; justify-content: space-between; gap: .5rem; align-items: baseline; }
+  .req .title { font-weight: 700; }
+  .req .detail { color: var(--sub); font-size: .9rem; margin-top: .15rem; overflow-wrap: anywhere; }
+  .badge { font-size: .8rem; font-weight: 700; border-radius: 999px; padding: .05rem .6rem; border: 1px solid; white-space: nowrap; }
+  .badge.wait { color: var(--wait); }
+  .badge.ok { color: var(--ok); }
+  .badge.ng { color: var(--warn); }
+  .req .reply { margin-top: .4rem; font-size: .9rem; border-left: 3px solid var(--line); padding-left: .55rem; }
+
+  .msg { margin: 0 0 1rem; padding: .75rem .9rem; border-radius: 8px; border: 1px solid var(--line); background: var(--card); }
+  .msg.err { border-color: var(--warn); color: var(--warn); }
+  .hidden { display: none !important; }
+
+  .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: flex-end; justify-content: center; z-index: 10; }
+  .sheet {
+    background: var(--card); width: 100%; max-width: 34rem; max-height: 92vh; overflow-y: auto;
+    border-radius: 14px 14px 0 0; padding: 1.1rem 1rem calc(1.2rem + env(safe-area-inset-bottom, 0));
+  }
+  .sheet h3 { margin: 0 0 .2rem; font-size: 1.1rem; }
+  .sheet .orig { color: var(--sub); margin: 0 0 1rem; font-size: .92rem; }
+  @media (prefers-reduced-motion: no-preference) {
+    .sheet { animation: up .18s ease-out; }
+    @keyframes up { from { transform: translateY(24px); opacity: .6; } to { transform: none; opacity: 1; } }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>お世話宅配便グループ 申請<span class="test">テスト版</span></h1>
+    <p class="who" id="who">読み込み中です…</p>
+  </header>
+
+  <p class="msg hidden" id="msg" role="status"></p>
+
+  <!-- 本人登録 -->
+  <section id="v-register" class="box hidden">
+    <p class="note">はじめて使うときだけ、事務所から伝えられた登録コードを入れてください。</p>
+    <div class="field">
+      <label for="code">登録コード</label>
+      <input id="code" autocomplete="off" autocapitalize="characters" placeholder="例：TEST01">
+    </div>
+    <button class="btn" id="btn-register">登録する</button>
+  </section>
+
+  <nav id="tabs" class="hidden" role="tablist">
+    <button role="tab" data-view="change" aria-selected="true">予定の変更</button>
+    <button role="tab" data-view="status" aria-selected="false">申請の状況</button>
+    <button role="tab" data-view="leave" aria-selected="false">休みの希望</button>
+  </nav>
+
+  <!-- 予定の変更 -->
+  <section id="v-change" class="hidden">
+    <p class="note" id="sent-at"></p>
+    <div id="visits"></div>
+    <button class="btn sub" id="btn-add">予定にない訪問を追加する</button>
+  </section>
+
+  <!-- 申請の状況 -->
+  <section id="v-status" class="hidden">
+    <div id="reqs"></div>
+  </section>
+
+  <!-- 休みの希望 -->
+  <section id="v-leave" class="box hidden">
+    <div class="row2 field">
+      <div><label for="lv-from">はじめの日</label><input type="date" id="lv-from"></div>
+      <div><label for="lv-to">おわりの日</label><input type="date" id="lv-to"></div>
+    </div>
+    <p class="note">1日だけのときは、おわりの日は空けたままで大丈夫です。</p>
+    <div class="field hidden" id="lv-target-field">
+      <label for="lv-target">どの法人の休みか</label>
+      <select id="lv-target"></select>
+    </div>
+    <div class="field">
+      <span class="lbl">休みの種類</span>
+      <div class="choices three">
+        <input type="radio" name="lv-kind" id="lk1" value="希望休" checked><label for="lk1">希望休</label>
+        <input type="radio" name="lv-kind" id="lk2" value="有給"><label for="lk2">有給</label>
+        <input type="radio" name="lv-kind" id="lk3" value="その他"><label for="lk3">その他</label>
+      </div>
+    </div>
+    <div class="field">
+      <label for="lv-memo">メモ</label>
+      <textarea id="lv-memo" placeholder="午前だけ、などあれば"></textarea>
+    </div>
+    <button class="btn" id="btn-leave">休みの希望を送る</button>
+  </section>
+</main>
+
+<!-- 訪問の変更（下から出る画面） -->
+<div class="sheet-bg hidden" id="sheet-bg">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh-title">
+    <h3 id="sh-title">訪問の変更</h3>
+    <p class="orig" id="sh-orig"></p>
+
+    <div id="sh-new" class="hidden">
+      <div class="field"><label for="sh-date">訪問の日付</label><input type="date" id="sh-date"></div>
+      <div class="field"><label for="sh-patient">利用者</label><input id="sh-patient" placeholder="利用者の名前"></div>
+      <div class="field hidden" id="sh-org-field"><label for="sh-org">どの法人の訪問か</label><select id="sh-org"></select></div>
+    </div>
+
+    <div class="field" id="sh-kinds">
+      <span class="lbl">変更の種類</span>
+      <div class="choices three">
+        <input type="radio" name="sh-kind" id="sk1" value="時間の変更" checked><label for="sk1">時間の変更</label>
+        <input type="radio" name="sh-kind" id="sk2" value="キャンセル"><label for="sk2">キャンセル</label>
+        <input type="radio" name="sh-kind" id="sk3" value="担当の交代"><label for="sk3">担当の交代</label>
+      </div>
+    </div>
+
+    <div class="row2 field" id="sh-times">
+      <div><label for="sh-start">開始</label><input type="time" id="sh-start" step="300"></div>
+      <div><label for="sh-end">終了</label><input type="time" id="sh-end" step="300"></div>
+    </div>
+
+    <div class="field">
+      <label for="sh-memo">メモ<span class="hint" id="sh-memo-hint"></span></label>
+      <textarea id="sh-memo"></textarea>
+    </div>
+
+    <button class="btn" id="sh-send">申請を送る</button>
+    <button class="btn sub" id="sh-close">やめる</button>
+  </div>
+</div>
+
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script>
+  const LIFF_ID = '2012288635-WG5FiP1G';
+  const API_URL = 'https://script.google.com/macros/s/AKfycbyZp8Iph-KuqexOhMpzcniPKnUw7POps4mttd-rgcZH13soeikch7gDz5N-za4urooW/exec';
+  const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  let current = null;   // 変更しようとしている訪問
+  let myNums = [];      // 本人の番号（法人＋員番）。法人をまたぐ人は複数
+  const multi = () => myNums.length > 1;
+  const numLabel = (n) => n.org + ' ' + n.no;
+
+  function showMsg(text, isErr) {
+    const m = $('msg');
+    m.textContent = text;
+    m.className = 'msg' + (isErr ? ' err' : '');
+    window.scrollTo(0, 0);
+  }
+  function hideMsg() { $('msg').className = 'msg hidden'; }
+
+  function todayStr() {
+    const t = new Date();
+    return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+  }
+  function dayLabel(s) {
+    if (!s) return '';
+    const [y, m, d] = s.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    return m + '月' + d + '日（' + WEEK[dt.getDay()] + '）';
+  }
+
+  async function api(action, data) {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action, idToken: liff.getIDToken(), data: data || {} })
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'うまく送れませんでした');
+    return json;
+  }
+
+  async function busy(btn, label, fn) {
+    const old = btn.textContent;
+    btn.disabled = true; btn.textContent = label;
+    try { await fn(); } finally { btn.disabled = false; btn.textContent = old; }
+  }
+
+  // ===== 画面の切り替え =====
+  function showView(view) {
+    ['change', 'status', 'leave'].forEach(v => $('v-' + v).classList.toggle('hidden', v !== view));
+    document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.view === view)));
+    hideMsg();
+    if (view === 'change') loadSchedule();
+    if (view === 'status') loadStatus();
+  }
+  document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => showView(b.dataset.view)));
+
+  function enterApp(name, nums) {
+    myNums = nums || [];
+    $('who').textContent = name + ' さん' + (multi() ? '（' + myNums.map(numLabel).join('、') + '）' : '');
+    const opts = myNums.map((n, i) => '<option value="' + i + '">' + esc(numLabel(n)) + '</option>').join('');
+    $('sh-org').innerHTML = opts;
+    $('lv-target').innerHTML = '<option value="all">すべての法人</option>' + opts;
+    $('lv-target-field').classList.toggle('hidden', !multi());
+    $('v-register').classList.add('hidden');
+    $('tabs').classList.remove('hidden');
+    const v = new URLSearchParams(location.search).get('view');
+    showView(['change', 'status', 'leave'].includes(v) ? v : 'change');
+  }
+
+  // ===== 本人登録 =====
+  $('btn-register').addEventListener('click', (ev) => busy(ev.target, '登録しています…', async () => {
+    try {
+      const r = await api('register', { code: $('code').value });
+      enterApp(r.name, r.nums);
+      showMsg('登録しました。次からはすぐに申請できます。', false);
+    } catch (e) { showMsg(e.message, true); }
+  }));
+
+  // ===== 予定の変更 =====
+  async function loadSchedule() {
+    $('visits').innerHTML = '<p class="empty">予定を読み込んでいます…</p>';
+    try {
+      const r = await api('schedule');
+      $('sent-at').textContent = r.sentAt ? r.sentAt.slice(0, 16) + ' 時点の予定です。訪問を押すと変更を申請できます。' : '予定はまだ届いていません。';
+      if (!r.items.length) {
+        $('visits').innerHTML = '<p class="empty">見られる予定はまだありません。事務所が予定を確定すると、ここに出ます。</p>';
+        return;
+      }
+      let html = '', last = '';
+      r.items.forEach((it, i) => {
+        if (it.date !== last) { html += '<h2>' + esc(dayLabel(it.date)) + '</h2>'; last = it.date; }
+        const orgTag = multi() ? '（' + esc(it.org) + '）' : '';
+        if (it.type === 'off') {
+          html += '<div class="visit off"><span class="t">休み</span><span class="p">' + esc(it.content) + orgTag + '</span></div>';
+        } else if (it.type === 'work') {
+          html += '<div class="visit work"><span class="t">' + esc(it.start) + '〜' + esc(it.end) + '</span><span class="p">' + esc(it.content) + orgTag + '</span></div>';
+        } else {
+          html += '<button class="visit" data-i="' + i + '"><span class="t">' + esc(it.start) + '〜' + esc(it.end) + '</span>' +
+                  '<span class="p">' + esc(it.patient) + ' 様<span class="c">' + esc(it.content) + orgTag + '</span></span></button>';
+        }
+      });
+      $('visits').innerHTML = html;
+      $('visits').querySelectorAll('button.visit').forEach(b => b.addEventListener('click', () => openSheet(r.items[+b.dataset.i])));
+    } catch (e) {
+      $('visits').innerHTML = '';
+      showMsg('予定を読み込めませんでした：' + e.message, true);
+    }
+  }
+
+  function setKind(v) {
+    document.querySelectorAll('input[name="sh-kind"]').forEach(r => { r.checked = (r.value === v); });
+    syncKind();
+  }
+  function syncKind() {
+    const k = current ? document.querySelector('input[name="sh-kind"]:checked').value : '訪問の追加';
+    $('sh-times').classList.toggle('hidden', k === 'キャンセル' || k === '担当の交代');
+    $('sh-memo-hint').textContent = k === '担当の交代' ? '代わりに入る人など' : (k === 'キャンセル' ? '理由など' : '');
+  }
+  document.querySelectorAll('input[name="sh-kind"]').forEach(r => r.addEventListener('change', syncKind));
+
+  function openSheet(item) {
+    current = item || null;
+    $('sh-memo').value = '';
+    if (current) {
+      $('sh-title').textContent = '訪問の変更';
+      $('sh-orig').textContent = dayLabel(current.date) + '　' + current.start + '〜' + current.end + '　' + current.patient + ' 様';
+      $('sh-new').classList.add('hidden');
+      $('sh-kinds').classList.remove('hidden');
+      $('sh-start').value = current.start; $('sh-end').value = current.end;
+      setKind('時間の変更');
+    } else {
+      $('sh-title').textContent = '予定にない訪問を追加';
+      $('sh-orig').textContent = '予定の一覧にない訪問を申請します。';
+      $('sh-new').classList.remove('hidden');
+      $('sh-kinds').classList.add('hidden');
+      $('sh-date').value = todayStr(); $('sh-patient').value = '';
+      $('sh-org-field').classList.toggle('hidden', !multi());
+      $('sh-start').value = ''; $('sh-end').value = '';
+      syncKind();
+    }
+    $('sheet-bg').classList.remove('hidden');
+  }
+  function closeSheet() { $('sheet-bg').classList.add('hidden'); }
+  $('btn-add').addEventListener('click', () => openSheet(null));
+  $('sh-close').addEventListener('click', closeSheet);
+  $('sheet-bg').addEventListener('click', (e) => { if (e.target.id === 'sheet-bg') closeSheet(); });
+
+  $('sh-send').addEventListener('click', (ev) => busy(ev.target, '送っています…', async () => {
+    const kind = current ? document.querySelector('input[name="sh-kind"]:checked').value : '訪問の追加';
+    const needTime = (kind === '時間の変更' || kind === '訪問の追加');
+    const st = $('sh-start').value, en = $('sh-end').value;
+    if (needTime && (!st || !en)) { alert('開始と終了の時間を入れてください。'); return; }
+    if (needTime && st >= en) { alert('終了の時間は開始より後にしてください。'); return; }
+    if (!current && !$('sh-patient').value.trim()) { alert('利用者の名前を入れてください。'); return; }
+    if (kind === '時間の変更' && st === current.start && en === current.end) { alert('時間が変わっていません。'); return; }
+    const data = current
+      ? { scheduleId: current.id, date: current.date, patient: current.patient, kind,
+          oldTime: current.start + '〜' + current.end, newTime: needTime ? st + '〜' + en : '', memo: $('sh-memo').value.trim() }
+      : { scheduleId: '', date: $('sh-date').value, patient: $('sh-patient').value.trim(), kind,
+          oldTime: '', newTime: st + '〜' + en, memo: $('sh-memo').value.trim(),
+          org: (myNums[+$('sh-org').value] || myNums[0]).org, no: (myNums[+$('sh-org').value] || myNums[0]).no };
+    try {
+      await api('change', data);
+      closeSheet();
+      showMsg('申請を送りました。「申請の状況」で確認の結果を見られます。', false);
+    } catch (e) { alert('申請を送れませんでした：' + e.message); }
+  }));
+
+  // ===== 申請の状況 =====
+  async function loadStatus() {
+    $('reqs').innerHTML = '<p class="empty">読み込んでいます…</p>';
+    try {
+      const r = await api('status');
+      if (!r.items.length) { $('reqs').innerHTML = '<p class="empty">まだ申請はありません。</p>'; return; }
+      $('reqs').innerHTML = r.items.map(it => {
+        const cls = it.status === '適用済み' ? 'ok' : (it.status === '却下' ? 'ng' : 'wait');
+        const label = it.status === '適用済み' ? '反映しました' : (it.status === '却下' ? '反映できません' : '確認待ち');
+        let title, detail;
+        if (it.type === '休みの希望') {
+          title = '休みの希望（' + it.leaveKind + '）';
+          detail = dayLabel(it.from) + (it.to && it.to !== it.from ? ' 〜 ' + dayLabel(it.to) : '');
+        } else {
+          title = it.kind + '　' + it.patient + ' 様';
+          detail = dayLabel(it.date) + '　' + (it.oldTime ? it.oldTime : '') + (it.newTime ? (it.oldTime ? ' → ' : '') + it.newTime : '');
+        }
+        if (multi()) title += '（' + it.org + '）';
+        return '<div class="req"><div class="head"><span class="title">' + esc(title) + '</span>' +
+               '<span class="badge ' + cls + '">' + label + '</span></div>' +
+               '<div class="detail">' + esc(detail) + '</div>' +
+               (it.memo ? '<div class="detail">メモ：' + esc(it.memo) + '</div>' : '') +
+               (it.note ? '<div class="reply">事務所から：' + esc(it.note) + '</div>' : '') +
+               '<div class="detail">' + esc(it.at.slice(0, 16)) + ' に送信</div></div>';
+      }).join('');
+    } catch (e) {
+      $('reqs').innerHTML = '';
+      showMsg('読み込めませんでした：' + e.message, true);
+    }
+  }
+
+  // ===== 休みの希望 =====
+  $('btn-leave').addEventListener('click', (ev) => busy(ev.target, '送っています…', async () => {
+    const from = $('lv-from').value, to = $('lv-to').value || from;
+    if (!from) { showMsg('はじめの日を選んでください。', true); return; }
+    if (to < from) { showMsg('おわりの日は、はじめの日より後にしてください。', true); return; }
+    try {
+      const t = $('lv-target').value;
+      const n = (t === 'all' || !multi()) ? myNums[0] : myNums[+t];
+      await api('leave', { from, to, kind: document.querySelector('input[name="lv-kind"]:checked').value, memo: $('lv-memo').value.trim(),
+                           target: (multi() && t === 'all') ? 'all' : 'one', org: n.org, no: n.no });
+      $('lv-from').value = ''; $('lv-to').value = ''; $('lv-memo').value = '';
+      showMsg('休みの希望を送りました。「申請の状況」で確認の結果を見られます。', false);
+    } catch (e) { showMsg('送れませんでした：' + e.message, true); }
+  }));
+
+  // ===== はじめ =====
+  async function start() {
+    try {
+      await liff.init({ liffId: LIFF_ID });
+      if (!liff.isLoggedIn()) { liff.login(); return; }
+      const me = await api('hello');
+      if (me.registered) {
+        enterApp(me.name, me.nums);
+      } else {
+        $('who').textContent = '登録がまだです';
+        $('v-register').classList.remove('hidden');
+      }
+    } catch (e) {
+      $('who').textContent = '';
+      showMsg('画面を開けませんでした：' + e.message + '　LINEのトーク画面から開き直してください。', true);
+    }
+  }
+  start();
+</script>
+</body>
+</html>
