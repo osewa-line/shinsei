@@ -116,6 +116,19 @@
   .pat-list button small { color: var(--sub); margin-left: .4rem; }
   .msg { margin: 0 0 1rem; padding: .75rem .9rem; border-radius: 8px; border: 1px solid var(--line); background: var(--card); }
   .msg.err { border-color: var(--warn); color: var(--warn); }
+  /* 送ったかどうかを大きく知らせる（2026-11-12 本人：年配の人が多く、上の小さい文字では気づかない） */
+  .done-bg { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 20; padding: 1rem; }
+  .done { background: var(--card); border-radius: 18px; padding: 1.6rem 1.2rem 1.2rem; width: min(420px, 100%); text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,.3); }
+  .done .mark { width: 84px; height: 84px; border-radius: 50%; margin: 0 auto .8rem; display: flex; align-items: center; justify-content: center; font-size: 3.2rem; font-weight: 700; color: #fff; background: var(--ok); }
+  .done.ng .mark { background: var(--warn); }
+  .done h2 { margin: 0 0 .7rem; font-size: 1.6rem; }
+
+  .done .what { font-size: 1.2rem; font-weight: 700; margin: 0 0 .6rem; line-height: 1.5; white-space: pre-line; }
+  .done .sub { color: var(--sub); font-size: 1rem; margin: 0 0 1.2rem; line-height: 1.6; text-align: left; white-space: pre-line; }
+  .done .btn { display: block; width: 100%; text-align: center; font-size: 1.15rem; padding: .95rem; }
+  .done .btn + .btn { margin-top: .6rem; }
+  .done h2 { color: var(--ok); }
+  .done.ng h2 { color: var(--warn); }
   .hidden { display: none !important; }
 
   .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: flex-end; justify-content: center; z-index: 10; }
@@ -209,6 +222,17 @@
 </main>
 
 <!-- 予定の変更（下から出る画面） -->
+<div class="done-bg hidden" id="done-bg" role="dialog" aria-modal="true" aria-labelledby="done-title">
+  <div class="done" id="done">
+    <div class="mark" id="done-mark">✓</div>
+    <h2 id="done-title"></h2>
+    <p class="what" id="done-what"></p>
+    <p class="sub" id="done-sub"></p>
+    <button class="btn" id="done-ok">閉じる</button>
+    <button class="btn sub hidden" id="done-status">申請の状況を見る</button>
+  </div>
+</div>
+
 <div class="sheet-bg hidden" id="sheet-bg">
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh-title">
     <h3 id="sh-title">予定の変更</h3>
@@ -268,6 +292,20 @@
     window.scrollTo(0, 0);
   }
   function hideMsg() { $('msg').className = 'msg hidden'; }
+  // 送ったとき・送れなかったときは、画面のまん中に大きく出す（2026-11-12）
+  function doneBox(ok, title, what, sub) {
+    $('done').className = 'done' + (ok ? '' : ' ng');
+    $('done-mark').textContent = ok ? '✓' : '！';
+    $('done-title').textContent = title;
+    $('done-what').textContent = what || '';
+    $('done-what').classList.toggle('hidden', !what);
+    $('done-sub').textContent = sub || '';
+    $('done-sub').classList.toggle('hidden', !sub);
+    $('done-status').classList.toggle('hidden', !ok);
+    $('done-bg').classList.remove('hidden');
+    $('done-ok').focus();
+  }
+  function doneClose() { $('done-bg').classList.add('hidden'); }
 
   function todayStr() {
     const t = new Date();
@@ -531,8 +569,9 @@
     try {
       await api('change', data);
       closeSheet();
-      showMsg('申請を送りました。「申請の状況」で確認の結果を見られます。', false);
-    } catch (e) { alert('申請を送れませんでした：' + e.message); }
+      hideMsg();
+      doneBox(true, '送信しました', dayLabel(data.date) + '\n' + kind + (data.patient ? '　' + data.patient + ' 様' : ''), '申請は事務所に届きました。事務所が確認すると、「申請の状況」に結果が出ます。');
+    } catch (e) { doneBox(false, '送れませんでした', '', e.message + '\nもう一度送るか、事務所に連絡してください。'); }
   }));
 
   // ===== 申請の状況 =====
@@ -582,6 +621,8 @@
     return m;
   }
   document.querySelectorAll('input[name="lv-kind"]').forEach(r => r.addEventListener('change', lvSync));
+  $('done-ok').addEventListener('click', doneClose);
+  $('done-status').addEventListener('click', () => { doneClose(); showView('status'); });
   $('lv-cal').addEventListener('click', (ev) => {
     const b = ev.target.closest('button'); if (!b) return;
     if (b.dataset.m) { lvMonth = b.dataset.m; lvCal(); return; }
@@ -590,14 +631,14 @@
   ['lv-start', 'lv-end'].forEach(id => $(id).addEventListener('change', lvSync));
   $('btn-leave').addEventListener('click', (ev) => busy(ev.target, '送っています…', async () => {
     const from = $('lv-from').value, kind = lvKind();
-    if (!from) { showMsg('休みたい日を選んでください。', true); return; }
-    if (from < leaveMin()) { showMsg(leaveMsg(), true); return; }
+    if (!from) { doneBox(false, '日にちを選んでください', '', 'カレンダーで、休みたい日を押してから送ってください。'); return; }
+    if (from < leaveMin()) { doneBox(false, 'この日は送れません', '', leaveMsg()); return; }
     let time = '';
     if (kind === '時間有休') {
       const m = lvSync();
-      if (!$('lv-start').value || !$('lv-end').value) { showMsg('休む時間（から・まで）を入れてください。', true); return; }
-      if (m <= 0) { showMsg('休む時間の「まで」は「から」より後にしてください。', true); return; }
-      if (m >= 480) { showMsg('8時間以上のときは「有給（1日）」を選んでください。', true); return; }
+      if (!$('lv-start').value || !$('lv-end').value) { doneBox(false, '時間を入れてください', '', '時間有休のときは、休む時間（から・まで）を入れてください。'); return; }
+      if (m <= 0) { doneBox(false, '時間を確かめてください', '', '休む時間の「まで」は「から」より後にしてください。'); return; }
+      if (m >= 480) { doneBox(false, '時間を確かめてください', '', '8時間以上のときは「有給（1日）」を選んでください。'); return; }
       time = $('lv-start').value + '〜' + $('lv-end').value;
     }
     try {
@@ -605,9 +646,11 @@
       const n = (t === 'all' || !multi()) ? myNums[0] : myNums[+t];
       await api('leave', { from, to: from, kind, time, memo: $('lv-memo').value.trim(),
                            target: (multi() && t === 'all') ? 'all' : 'one', org: n.org, no: n.no });
+      const what = dayLabel(from) + '\n' + kind + (time ? ' ' + time : '') + ((multi() && t === 'all') ? '（すべての法人）' : (multi() ? '（' + n.org + '）' : ''));
       $('lv-from').value = ''; lvCal(); $('lv-memo').value = ''; $('lv-start').value = ''; $('lv-end').value = ''; lvSync();
-      showMsg('休みの希望を送りました。「申請の状況」で確認の結果を見られます。', false);
-    } catch (e) { showMsg('送れませんでした：' + e.message, true); }
+      hideMsg();
+      doneBox(true, '送信しました', what, 'この休みの希望は事務所に届きました。事務所が確認すると、「申請の状況」に結果が出ます。');
+    } catch (e) { doneBox(false, '送れませんでした', '', e.message + '\nもう一度送るか、事務所に連絡してください。'); }
   }));
 
   // ===== はじめ =====
