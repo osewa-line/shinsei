@@ -109,6 +109,11 @@
   .badge.wait { color: var(--wait); }
   .badge.ok { color: var(--ok); }
   .badge.ng { color: var(--warn); }
+  .badge.off { color: var(--sub); }
+  .req .act { margin-top: .7rem; }
+  .req .act .btn { background: var(--card); color: var(--warn); border: 2px solid var(--warn); font-size: 1.05rem; padding: .75rem; }
+  .req .fixed { margin-top: .5rem; font-size: .92rem; color: var(--sub); }
+  .done .btn.danger { background: var(--warn); color: #fff; }
   .req .reply { margin-top: .4rem; font-size: .9rem; border-left: 3px solid var(--line); padding-left: .55rem; }
 
   .pat-list { display: grid; gap: .35rem; margin-top: .4rem; }
@@ -228,6 +233,7 @@
     <h2 id="done-title"></h2>
     <p class="what" id="done-what"></p>
     <p class="sub" id="done-sub"></p>
+    <button class="btn danger hidden" id="done-yes">取り消す</button>
     <button class="btn" id="done-ok">閉じる</button>
     <button class="btn sub hidden" id="done-status">申請の状況を見る</button>
   </div>
@@ -305,7 +311,17 @@
     $('done-bg').classList.remove('hidden');
     $('done-ok').focus();
   }
-  function doneClose() { $('done-bg').classList.add('hidden'); }
+  function doneClose() { $('done-bg').classList.add('hidden'); $('done-yes').classList.add('hidden'); $('done-ok').textContent = '閉じる'; if (askResolve) { const f = askResolve; askResolve = null; f(false); } }
+  // 「本当に取り消しますか」を大きく聞く（2026-11-12）
+  let askResolve = null;
+  function askBox(title, what, sub, yesLabel) {
+    doneBox(false, title, what, sub);
+    $('done-mark').textContent = '？';
+    $('done-yes').textContent = yesLabel; $('done-yes').classList.remove('hidden');
+    $('done-ok').textContent = 'やめる';
+    $('done-yes').focus();
+    return new Promise(res => { askResolve = res; });
+  }
 
   function todayStr() {
     const t = new Date();
@@ -581,9 +597,9 @@
       const r = await api('status');
       if (!r.items.length) { $('reqs').innerHTML = '<p class="empty">まだ申請はありません。</p>'; return; }
       $('reqs').innerHTML = r.items.map(it => {
-        const cls = it.status === '適用済み' ? 'ok' : (it.status === '却下' || it.status === '取消') ? 'ng' : 'wait';
+        const cls = it.status === '適用済み' ? 'ok' : (it.status === '却下' || it.status === '取消') ? 'ng' : it.status === '取下げ' ? 'off' : 'wait';
         // 申請した人から見た言い方にする（2026-11-12 本人：「取り消しました」だと自分で取り消したように読める）
-        const label = it.status === '適用済み' ? '反映されました' : it.status === '却下' ? '反映されませんでした' : it.status === '取消' ? '取り消されました' : '確認待ち';
+        const label = it.status === '適用済み' ? '反映されました' : it.status === '却下' ? '反映されませんでした' : it.status === '取消' ? '取り消されました' : it.status === '取下げ' ? '取り消しました' : '確認待ち';
         const why = it.status === '取消' ? 'いったん反映されたあと、事務所で取り消されました。' : '';
         let title, detail;
         if (it.type === '休みの希望') {
@@ -600,7 +616,11 @@
                (it.memo ? '<div class="detail">メモ：' + esc(it.memo) + '</div>' : '') +
                (why ? '<div class="detail">' + why + '</div>' : '') +
                (it.note ? '<div class="reply">事務所から：' + esc(it.note) + '</div>' : '') +
-               '<div class="detail">' + esc(it.at.slice(0, 16)) + ' に送信</div></div>';
+               '<div class="detail">' + esc(String(it.at || '').slice(0, 16)) + ' に送信</div>' +
+               (it.status === '未確認' || !it.status
+                 ? '<div class="act"><button class="btn" data-wd="' + esc(it.id) + '" data-what="' + esc(title + '\n' + detail) + '">この申請を取り消す</button></div>'
+                 : it.status === '適用済み' ? '<div class="fixed">変えたいときは、管理者に直接伝えてください。</div>' : '') +
+               '</div>';
       }).join('');
     } catch (e) {
       $('reqs').innerHTML = '';
@@ -622,6 +642,22 @@
   }
   document.querySelectorAll('input[name="lv-kind"]').forEach(r => r.addEventListener('change', lvSync));
   $('done-ok').addEventListener('click', doneClose);
+  $('done-yes').addEventListener('click', () => { const f = askResolve; askResolve = null; $('done-bg').classList.add('hidden'); $('done-yes').classList.add('hidden'); $('done-ok').textContent = '閉じる'; if (f) f(true); });
+  // 申請の状況：確認待ちの申請を本人が取り消す（2026-11-12 本人。確定した分は管理者に直接）
+  $('reqs').addEventListener('click', async (ev) => {
+    const b = ev.target.closest('button[data-wd]'); if (!b) return;
+    const what = b.dataset.what || '';
+    const yes = await askBox('この申請を取り消しますか？', what, '取り消すと、事務所には届かなくなります。', '取り消す');
+    if (!yes) return;
+    await busy(b, '取り消しています…', async () => {
+      try {
+        await api('withdraw', { id: b.dataset.wd });
+        doneBox(true, '取り消しました', what, 'この申請は取り消しました。必要なら、もう一度送り直してください。');
+        $('done-status').classList.add('hidden');
+      } catch (e) { doneBox(false, '取り消せませんでした', what, e.message); }
+    });
+    loadStatus();
+  });
   $('done-status').addEventListener('click', () => { doneClose(); showView('status'); });
   $('lv-cal').addEventListener('click', (ev) => {
     const b = ev.target.closest('button'); if (!b) return;
