@@ -169,6 +169,7 @@
       <label for="lv-from">休みたい日</label><input type="date" id="lv-from">
     </div>
     <p class="note">何日か休みたいときは、1日ずつ送ってください。</p>
+    <p class="note" id="lv-due" style="color:#B45309;font-weight:600"></p>
     <div class="field hidden" id="lv-target-field">
       <label for="lv-target">どの法人の休みか</label>
       <select id="lv-target"></select>
@@ -261,6 +262,18 @@
     return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
   }
   function monthFirst() { const t = new Date(); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-01'; }
+  // 休みの希望の期限（2026-11-11）：翌月分は前月15日まで。決めるのは申請箱。届かないときだけ同じ決まりで計算する
+  let leaveRule = null;
+  function leaveMin() {
+    if (leaveRule && leaveRule.min) return leaveRule.min;
+    const t = new Date(), add = t.getDate() <= 15 ? 1 : 2, x = new Date(t.getFullYear(), t.getMonth() + add, 1);
+    return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-01';
+  }
+  function leaveMsg() {
+    if (leaveRule && leaveRule.msg) return leaveRule.msg;
+    const mm = +leaveMin().slice(5, 7);
+    return mm + '/1 より前の休みは、LINEでは受け付けていません。管理者に直接伝えてください。（毎月15日までに翌月分）';
+  }
   function dayLabel(s) {
     if (!s) return '';
     const [y, m, d] = s.split('-').map(Number);
@@ -295,11 +308,13 @@
   }
   document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => showView(b.dataset.view)));
 
-  function enterApp(name, nums) {
+  function enterApp(name, nums, leave) {
     myNums = nums || [];
+    if (leave) leaveRule = leave;
     // 訪問看護の番号がある人は、予定に訪問が無くても「予定にない訪問を追加」が使える（名簿で判断。2026-10-30）
     if (myNums.some(n => n.visit)) { addMode = 'visit'; visitOrgs = [...new Set(myNums.filter(n => n.visit).map(n => n.org))]; }
-    $('lv-from').min = monthFirst();      // 今月より前は選べない（2026-10-30）
+    $('lv-from').min = leaveMin();        // 期限を過ぎた月は選べない（2026-11-11。前は今月より前だけ）
+    $('lv-due').textContent = leaveMsg();
     $('who').textContent = name + ' さん' + (multi() ? '（' + myNums.map(numLabel).join('、') + '）' : '');
     const opts = myNums.map((n, i) => '<option value="' + i + '">' + esc(numLabel(n)) + '</option>').join('');
     $('sh-org').innerHTML = opts;
@@ -332,7 +347,7 @@
   $('btn-reg-yes').addEventListener('click', (ev) => busy(ev.target, '登録しています…', async () => {
     try {
       const r = await api('register', { code: $('code').value.normalize('NFKC').replace(/\s/g, '') });
-      enterApp(r.name, r.nums);
+      enterApp(r.name, r.nums, r.leave);
       showMsg('登録しました。次からはすぐに申請できます。', false);
     } catch (e) { showMsg(e.message, true); }
   }));
@@ -531,7 +546,7 @@
   $('btn-leave').addEventListener('click', (ev) => busy(ev.target, '送っています…', async () => {
     const from = $('lv-from').value, kind = lvKind();
     if (!from) { showMsg('休みたい日を選んでください。', true); return; }
-    if (from < monthFirst()) { showMsg('今月より前の休みは申請できません。', true); return; }
+    if (from < leaveMin()) { showMsg(leaveMsg(), true); return; }
     let time = '';
     if (kind === '時間有休') {
       const m = lvSync();
@@ -557,7 +572,7 @@
       if (!liff.isLoggedIn()) { liff.login(); return; }
       const me = await api('hello');
       if (me.registered) {
-        enterApp(me.name, me.nums);
+        enterApp(me.name, me.nums, me.leave);
       } else if (me.disabled) {
         $('who').textContent = '';
         showMsg('このLINEでは、いまは申請できません。事務所に連絡してください。', true);
