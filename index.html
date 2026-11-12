@@ -73,6 +73,16 @@
 
   .choices { display: grid; grid-template-columns: 1fr 1fr; gap: .45rem; }
   .choices.three { grid-template-columns: repeat(3, 1fr); }
+  /* 休みの希望のカレンダー（2026-11-12：出せない月はそもそも出さない） */
+  .lvcal .mtabs { display: flex; gap: .4rem; margin-bottom: .5rem; }
+  .lvcal .mtabs button { flex: 1; padding: .55rem 0; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink); font: inherit; font-weight: 600; }
+  .lvcal .mtabs button[aria-pressed="true"] { background: var(--main); color: var(--main-ink); border-color: var(--main); }
+  .lvcal .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+  .lvcal .dw { text-align: center; font-size: .8rem; color: var(--sub); padding: .2rem 0; }
+  .lvcal .grid button { aspect-ratio: 1 / 1; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); font: inherit; font-size: 1rem; padding: 0; }
+  .lvcal .grid button.sun, .lvcal .dw.sun { color: var(--warn); }
+  .lvcal .grid button.sat, .lvcal .dw.sat { color: #2f6fb3; }
+  .lvcal .grid button[aria-pressed="true"] { background: var(--main); color: var(--main-ink); border-color: var(--main); font-weight: 700; }
   .choices input { position: absolute; opacity: 0; pointer-events: none; width: 1px; min-height: 0; }
   .choices label {
     font-weight: 500; margin: 0; text-align: center; padding: .55rem .3rem; border: 1px solid var(--line);
@@ -165,11 +175,13 @@
 
   <!-- 休みの希望 -->
   <section id="v-leave" class="box hidden">
+    <p class="note" id="lv-due" style="color:#B45309;font-weight:600"></p>
     <div class="field">
-      <label for="lv-from">休みたい日</label><input type="date" id="lv-from">
+      <span class="lbl">休みたい日</span><input type="hidden" id="lv-from">
+      <div id="lv-cal" class="lvcal"></div>
+      <p class="note" id="lv-picked" style="margin:.5rem 0 0"></p>
     </div>
     <p class="note">何日か休みたいときは、1日ずつ送ってください。</p>
-    <p class="note" id="lv-due" style="color:#B45309;font-weight:600"></p>
     <div class="field hidden" id="lv-target-field">
       <label for="lv-target">どの法人の休みか</label>
       <select id="lv-target"></select>
@@ -269,6 +281,30 @@
     const t = new Date(), add = t.getDate() <= 15 ? 1 : 2, x = new Date(t.getFullYear(), t.getMonth() + add, 1);
     return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-01';
   }
+  // 休みの希望のカレンダー：受け付ける月から3か月だけ出す（2026-11-12 本人：出せない月は選べないように）
+  const LV_MONTHS = 3, DOWJ = ['日', '月', '火', '水', '木', '金', '土'];
+  let lvMonth = '';
+  function lvMonths() {
+    const m = leaveMin(), y = +m.slice(0, 4), mo = +m.slice(5, 7), out = [];
+    for (let i = 0; i < LV_MONTHS; i++) { const d = new Date(y, mo - 1 + i, 1); out.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); }
+    return out;
+  }
+  function lvCal() {
+    const ms = lvMonths(), sel = $('lv-from').value;
+    if (sel && (sel < leaveMin() || !ms.includes(sel.slice(0, 7)))) $('lv-from').value = '';
+    if (!ms.includes(lvMonth)) lvMonth = ms[0];
+    const y = +lvMonth.slice(0, 4), mo = +lvMonth.slice(5, 7), first = new Date(y, mo - 1, 1).getDay(), last = new Date(y, mo, 0).getDate();
+    let o = '<div class="mtabs">' + ms.map(m => '<button type="button" data-m="' + m + '" aria-pressed="' + (m === lvMonth) + '">' + (+m.slice(5, 7)) + '月</button>').join('') + '</div><div class="grid">';
+    o += DOWJ.map((w, i) => '<div class="dw' + (i === 0 ? ' sun' : i === 6 ? ' sat' : '') + '">' + w + '</div>').join('');
+    for (let i = 0; i < first; i++) o += '<div></div>';
+    for (let d = 1; d <= last; d++) {
+      const ds = lvMonth + '-' + String(d).padStart(2, '0'), w = (first + d - 1) % 7;
+      o += '<button type="button" data-d="' + ds + '" class="' + (w === 0 ? 'sun' : w === 6 ? 'sat' : '') + '" aria-pressed="' + ($('lv-from').value === ds) + '" aria-label="' + mo + '月' + d + '日">' + d + '</button>';
+    }
+    $('lv-cal').innerHTML = o + '</div>';
+    const v = $('lv-from').value;
+    $('lv-picked').textContent = v ? (+v.slice(5, 7)) + '/' + (+v.slice(8, 10)) + '（' + DOWJ[new Date(+v.slice(0, 4), +v.slice(5, 7) - 1, +v.slice(8, 10)).getDay()] + '）を選んでいます' : '休みたい日を押してください';
+  }
   function leaveMsg() {
     if (leaveRule && leaveRule.msg) return leaveRule.msg;
     const mm = +leaveMin().slice(5, 7);
@@ -315,6 +351,7 @@
     if (myNums.some(n => n.visit)) { addMode = 'visit'; visitOrgs = [...new Set(myNums.filter(n => n.visit).map(n => n.org))]; }
     $('lv-from').min = leaveMin();        // 期限を過ぎた月は選べない（2026-11-11。前は今月より前だけ）
     $('lv-due').textContent = leaveMsg();
+    lvCal();
     $('who').textContent = name + ' さん' + (multi() ? '（' + myNums.map(numLabel).join('、') + '）' : '');
     const opts = myNums.map((n, i) => '<option value="' + i + '">' + esc(numLabel(n)) + '</option>').join('');
     $('sh-org').innerHTML = opts;
@@ -506,7 +543,9 @@
       if (!r.items.length) { $('reqs').innerHTML = '<p class="empty">まだ申請はありません。</p>'; return; }
       $('reqs').innerHTML = r.items.map(it => {
         const cls = it.status === '適用済み' ? 'ok' : (it.status === '却下' || it.status === '取消') ? 'ng' : 'wait';
-        const label = it.status === '適用済み' ? '反映しました' : it.status === '却下' ? '反映できません' : it.status === '取消' ? '取り消しました' : '確認待ち';
+        // 申請した人から見た言い方にする（2026-11-12 本人：「取り消しました」だと自分で取り消したように読める）
+        const label = it.status === '適用済み' ? '反映されました' : it.status === '却下' ? '反映されませんでした' : it.status === '取消' ? '取り消されました' : '確認待ち';
+        const why = it.status === '取消' ? 'いったん反映されたあと、事務所で取り消されました。' : '';
         let title, detail;
         if (it.type === '休みの希望') {
           title = '休みの希望（' + it.leaveKind + (it.newTime ? ' ' + it.newTime : '') + '）';
@@ -520,6 +559,7 @@
                '<span class="badge ' + cls + '">' + label + '</span></div>' +
                '<div class="detail">' + esc(detail) + '</div>' +
                (it.memo ? '<div class="detail">メモ：' + esc(it.memo) + '</div>' : '') +
+               (why ? '<div class="detail">' + why + '</div>' : '') +
                (it.note ? '<div class="reply">事務所から：' + esc(it.note) + '</div>' : '') +
                '<div class="detail">' + esc(it.at.slice(0, 16)) + ' に送信</div></div>';
       }).join('');
@@ -542,6 +582,11 @@
     return m;
   }
   document.querySelectorAll('input[name="lv-kind"]').forEach(r => r.addEventListener('change', lvSync));
+  $('lv-cal').addEventListener('click', (ev) => {
+    const b = ev.target.closest('button'); if (!b) return;
+    if (b.dataset.m) { lvMonth = b.dataset.m; lvCal(); return; }
+    if (b.dataset.d) { $('lv-from').value = b.dataset.d; lvCal(); }
+  });
   ['lv-start', 'lv-end'].forEach(id => $(id).addEventListener('change', lvSync));
   $('btn-leave').addEventListener('click', (ev) => busy(ev.target, '送っています…', async () => {
     const from = $('lv-from').value, kind = lvKind();
@@ -560,7 +605,7 @@
       const n = (t === 'all' || !multi()) ? myNums[0] : myNums[+t];
       await api('leave', { from, to: from, kind, time, memo: $('lv-memo').value.trim(),
                            target: (multi() && t === 'all') ? 'all' : 'one', org: n.org, no: n.no });
-      $('lv-from').value = ''; $('lv-memo').value = ''; $('lv-start').value = ''; $('lv-end').value = ''; lvSync();
+      $('lv-from').value = ''; lvCal(); $('lv-memo').value = ''; $('lv-start').value = ''; $('lv-end').value = ''; lvSync();
       showMsg('休みの希望を送りました。「申請の状況」で確認の結果を見られます。', false);
     } catch (e) { showMsg('送れませんでした：' + e.message, true); }
   }));
